@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GamerGuide | 會員攻略發布系統 (彈窗登入+影片版)</title>
+    <title>GamerGuide | 會員攻略發布系統</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 0; }
         header { background-color: #1f1f1f; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #ffcc00; }
@@ -13,7 +13,7 @@
         .auth-panel { display: flex; align-items: center; gap: 10px; }
         .user-avatar { width: 35px; height: 35px; border-radius: 50%; border: 2px solid #ffcc00; display: none; }
         .btn { padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        .login-btn { background-color: #4285F4; color: white; }
+        .login-btn { background-color: #4285F4; color: white; } /* Google 藍 */
         .logout-btn { background-color: #d9534f; color: white; display: none; }
 
         .container { max-width: 800px; margin: 30px auto; padding: 0 20px; }
@@ -63,7 +63,7 @@
     <div class="container">
         <!-- 未登入提示 -->
         <div id="loginReminder" class="login-reminder">
-            <h3>請先登入 Google 帳號，即可發表攻略與上傳影片！</h3>
+            <h3>請先登入 Google 帳號，即可發表或編輯攻略文章！</h3>
         </div>
 
         <!-- 撰寫攻略表單 -->
@@ -71,7 +71,7 @@
             <h2 id="formTitle">📝 撰寫新攻略</h2>
             <form id="guideForm">
                 <input type="hidden" id="editingPostId"> 
-                <input type="hidden" id="existingVideoUrl"> 
+                <input type="hidden" id="existingVideoUrl"> <!-- 紀錄原本的影片網址 -->
                 
                 <div class="form-group">
                     <label for="gameName">遊戲名稱：</label>
@@ -85,15 +85,15 @@
                     <label for="content">攻略內容：</label>
                     <textarea id="content" required></textarea>
                 </div>
-                
-                <!-- 影片上傳欄位 -->
+
+                <!-- 新增：影片選擇欄位 -->
                 <div class="form-group">
                     <label for="videoFile">上傳攻略影片 (選填，支援 mp4, webm)：</label>
                     <input type="file" id="videoFile" accept="video/*">
-                    <small id="videoHint" style="color: #888; display: block; margin-top: 5px;">* 重新上傳將會覆蓋原有影片</small>
+                    <small id="videoHint" style="color: #888; display: block; margin-top: 5px; display: none;">* 重新選擇影片上傳將會覆蓋舊檔案</small>
                 </div>
 
-                <!-- 進度條 -->
+                <!-- 新增：上傳進度條 -->
                 <div id="progressContainer" class="progress-container">
                     <div id="progressBar" class="progress-bar"></div>
                 </div>
@@ -113,9 +113,10 @@
     <!-- 載入 Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        // 恢復使用原有的 signInWithPopup
+        // 保持使用原有的彈窗登入
         import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        // 增引 Firebase Storage 模組
         import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
         // Firebase 配置
@@ -129,34 +130,22 @@
             measurementId: "G-62ZWJ9JLJD"
         };
 
-        // 初始化 Firebase
+        // 初始化 Firebase 各服務
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const storage = getStorage(app); 
+        const storage = getStorage(app); // 初始化儲存空間
         const provider = new GoogleAuthProvider();
 
         let currentUser = null; 
 
-        // === 1. 登入/登出邏輯 (回歸彈窗，並增加錯誤提示防攔截) ===
-        document.getElementById('loginBtn').addEventListener('click', async () => {
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("登入錯誤詳細資料：", error);
-                // 針對常見的彈窗攔截錯誤進行提示
-                if (error.code === 'auth/popup-closed-by-user') {
-                    alert('⚠️ 登入視窗被關閉了！請不要手動關閉彈窗，並允許瀏覽器的彈窗開啟權限。');
-                } else if (error.code === 'auth/popup-blocked') {
-                    alert('🚫 登入彈窗被瀏覽器封鎖了！請檢查網址列右側的封鎖圖示，並選擇「允許來自此網站的彈窗」。\n\n如果是使用 LINE 或 FB 開啟，請點選右上角改用「Safari」或「Chrome」瀏覽器開啟。');
-                } else {
-                    alert('登入失敗：' + error.message);
-                }
-            }
+        // === 1. 登入/登出邏輯 (照舊使用彈窗) ===
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            signInWithPopup(auth, provider).catch(err => console.error("彈窗登入失敗:", err));
         });
-
         document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
 
+        // 監聽登入狀態改變
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
@@ -177,7 +166,7 @@
             }
         });
 
-        // 輔助函式：處理檔案上傳
+        // 輔助函式：處理檔案上傳並動態更新進度條
         function uploadVideoPromise(file) {
             return new Promise((resolve, reject) => {
                 const uniqueName = Date.now() + "_" + file.name;
@@ -207,7 +196,7 @@
             });
         }
 
-        // === 2. 發布或儲存編輯攻略 ===
+        // === 2. 發布或儲存編輯攻略 (含影片上傳流程) ===
         const form = document.getElementById('guideForm');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -220,12 +209,14 @@
             const existingVideoUrl = document.getElementById('existingVideoUrl').value;
             const videoFile = document.getElementById('videoFile').files[0];
 
+            // 防止上傳途中重複點擊
             document.getElementById('formSubmitBtn').disabled = true;
-            document.getElementById('formSubmitBtn').textContent = "處理中，請稍候...";
+            document.getElementById('formSubmitBtn').textContent = "正在處理並上傳檔案，請稍候...";
 
             try {
                 let videoUrl = existingVideoUrl || null;
 
+                // 如果用戶選擇了新影片檔案，執行上傳
                 if (videoFile) {
                     videoUrl = await uploadVideoPromise(videoFile);
                 }
@@ -247,7 +238,7 @@
                 }
             } catch (error) {
                 console.error(error);
-                alert('操作失敗，檔案可能過大或權限不足。');
+                alert('操作失敗，檔案可能過大或 Storage 權限未開啟。');
             } finally {
                 document.getElementById('formSubmitBtn').disabled = false;
                 document.getElementById('formSubmitBtn').textContent = editingId ? "儲存修改" : "發布攻略";
@@ -270,6 +261,8 @@
                     postEl.classList.add('guide-post');
                     
                     const showBtn = currentUser && currentUser.uid === data.userId ? 'inline-block' : 'none';
+
+                    // 判斷文章是否有影片，有的話動態加入 HTML5 `<video>` 標籤
                     const videoHtml = data.videoUrl ? 
                         `<video class="post-video" src="${data.videoUrl}" controls preload="metadata"></video>` : '';
 
@@ -289,6 +282,7 @@
                     postsContainer.appendChild(postEl);
                 });
 
+                // 綁定編輯與刪除事件
                 document.querySelectorAll('.edit-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => startEdit(e.target.getAttribute('data-id')));
                 });
@@ -308,6 +302,7 @@
             document.getElementById('title').value = post.querySelector('h3').textContent;
             document.getElementById('content').value = post.querySelector('.post-content').textContent;
             
+            // 帶入原本是否存在影片的狀態
             document.getElementById('existingVideoUrl').value = videoEl ? videoEl.src : '';
             document.getElementById('videoHint').style.display = videoEl ? 'block' : 'none';
 
@@ -320,21 +315,23 @@
         }
 
         async function handleDelete(id) {
-            if (confirm('確定要刪除這篇攻略嗎？連同影片也將一併刪除且無法復原。')) {
+            if (confirm('確定要刪除這篇攻略嗎？連同影片也將一併自雲端硬碟刪除，此操作無法復原。')) {
                 try {
                     const btn = document.querySelector(`.delete-btn[data-id="${id}"]`);
                     const post = btn.closest('.guide-post');
                     const videoEl = post.querySelector('.post-video');
 
+                    // 1. 如果文章有附加影片，必須先把雲端 Storage 內的檔案砍掉
                     if (videoEl && videoEl.src && !videoEl.src.includes(window.location.host)) {
                         try {
                             const fileRef = ref(storage, videoEl.src);
                             await deleteObject(fileRef);
-                        } catch(e) { console.warn("Storage 檔案已提前清除或不存在", e); }
+                        } catch(e) { console.warn("Storage 檔案已不存在或清除失敗", e); }
                     }
 
+                    // 2. 接著刪除 Firestore 貼文資料
                     await deleteDoc(doc(db, "guides", id));
-                    alert('🗑️ 攻略及影片已成功刪除！');
+                    alert('🗑️ 攻略已成功刪除！');
                     
                     if(document.getElementById('editingPostId').value === id) {
                         resetForm();
@@ -359,6 +356,7 @@
             document.getElementById('progressContainer').style.display = 'none';
         }
 
+        // 啟動即時資料監聽
         initPostsListener();
     </script>
 </body>
