@@ -1,4 +1,4 @@
-# 🎮 GamerGuide - 會員制遊戲攻略發布系統 (CRUD & Auth)
+# 🎮 OurGamerGuide - OGG 遊戲攻略發布系統 (CRUD & Auth)
 
 [![Firebase](https://img.shields.io/badge/Backend-Firebase-FFCA28?style=flat&logo=firebase)](https://firebase.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
