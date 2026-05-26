@@ -177,3 +177,134 @@
         const form = document.getElementById('guideForm');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (!currentUser) return alert('請先登入！');
+
+            const gameName = document.getElementById('gameName').value;
+            const title = document.getElementById('title').value;
+            const content = document.getElementById('content').value;
+            const videoUrl = document.getElementById('videoUrl').value.trim();
+            const editingId = document.getElementById('editingPostId').value;
+
+            try {
+                if (editingId) {
+                    const postRef = doc(db, "guides", editingId);
+                    await updateDoc(postRef, { gameName, title, content, videoUrl });
+                    alert('📝 攻略修改成功！');
+                    resetForm();
+                } else {
+                    await addDoc(collection(db, "guides"), {
+                        gameName, title, content, videoUrl,
+                        userId: currentUser.uid, 
+                        author: currentUser.displayName,
+                        timestamp: new Date()
+                    });
+                    alert('🎉 攻略發表成功！');
+                    resetForm();
+                }
+            } catch (error) {
+                console.error(error);
+                alert('操作失敗，請檢查權限或網路狀態。');
+            }
+        });
+
+        // === 3. 即時同步下載雲端資料庫文章 ===
+        function initPostsListener() {
+            const q = query(collection(db, "guides"), orderBy("timestamp", "desc"));
+            
+            onSnapshot(q, (snapshot) => {
+                const postsContainer = document.getElementById('postsContainer');
+                postsContainer.innerHTML = ''; 
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const postId = doc.id;
+                    
+                    const postEl = document.createElement('article');
+                    postEl.classList.add('guide-post');
+                    
+                    const showBtn = currentUser && currentUser.uid === data.userId ? 'inline-block' : 'none';
+                    
+                    // 根據網址動態產生影片小視窗
+                    const videoHtml = formatVideoEmbed(data.videoUrl);
+
+                    postEl.innerHTML = `
+                        <h3>${data.title}</h3>
+                        <div class="meta">
+                            <span>遊戲：${data.gameName}</span> 
+                            <span>作者：${data.author}</span> 
+                        </div>
+                        <p class="post-content">${data.content}</p>
+                        ${videoHtml}
+                        <div class="action-group">
+                            <button class="btn edit-btn" style="display:${showBtn}" data-id="${postId}">編輯</button>
+                            <button class="btn delete-btn" style="display:${showBtn}" data-id="${postId}">刪除</button>
+                        </div>
+                    `;
+                    postsContainer.appendChild(postEl);
+                });
+
+                // 綁定編輯與刪除事件
+                document.querySelectorAll('.edit-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => startEdit(e.target.getAttribute('data-id')));
+                });
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => handleDelete(e.target.getAttribute('data-id')));
+                });
+            });
+        }
+
+        // === 4. 編輯與刪除細節控制 ===
+        function startEdit(id) {
+            const btn = document.querySelector(`.edit-btn[data-id="${id}"]`);
+            const post = btn.closest('.guide-post');
+            
+            // 抓取原本貼文存在隱藏或渲染出的資料
+            document.getElementById('gameName').value = post.querySelector('.meta span:nth-child(1)').textContent.replace('遊戲：', '');
+            document.getElementById('title').value = post.querySelector('h3').textContent;
+            document.getElementById('content').value = post.querySelector('.post-content').textContent;
+            
+            // 尋找小視窗內的影片來源網址填回輸入框
+            const videoEl = post.querySelector('video');
+            const iframeEl = post.querySelector('iframe');
+            let oriUrl = '';
+            if (videoEl) oriUrl = videoEl.src;
+            if (iframeEl) oriUrl = iframeEl.src;
+            document.getElementById('videoUrl').value = oriUrl;
+
+            document.getElementById('editingPostId').value = id;
+            document.getElementById('formTitle').textContent = "✏️ 編輯我的攻略";
+            document.getElementById('formSubmitBtn').textContent = "儲存修改";
+            document.getElementById('cancelEditBtn').style.display = "block";
+            
+            window.scrollTo({ top: document.getElementById('postBox').offsetTop, behavior: 'smooth' });
+        }
+
+        async function handleDelete(id) {
+            if (confirm('確定要刪除這篇攻略嗎？此操作無法復原。')) {
+                try {
+                    await deleteDoc(doc(db, "guides", id));
+                    alert('🗑️ 攻略已成功刪除！');
+                    if(document.getElementById('editingPostId').value === id) {
+                        resetForm();
+                    }
+                } catch (error) {
+                    console.error(error);
+                    alert('刪除失敗，請確認您的權限。');
+                }
+            }
+        }
+
+        document.getElementById('cancelEditBtn').addEventListener('click', resetForm);
+
+        function resetForm() {
+            form.reset();
+            document.getElementById('editingPostId').value = '';
+            document.getElementById('formTitle').textContent = "📝 撰寫新攻略";
+            document.getElementById('formSubmitBtn').textContent = "發布攻略";
+            document.getElementById('cancelEditBtn').style.display = "none";
+        }
+
+        initPostsListener();
+    </script>
+</body>
+</html>
